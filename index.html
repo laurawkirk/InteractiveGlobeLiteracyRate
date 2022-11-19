@@ -1,0 +1,165 @@
+
+<!doctype html>
+<html>
+  <head>
+    <script src="http://d3js.org/d3.v5.min.js" type="text/JavaScript"></script>
+    <script src="https://unpkg.com/topojson@3.0.2/dist/topojson.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <title> Interactive Globe Literacy Rate</title>
+    <h2 class="tab"> Literacy Rate By Country</h2>
+    <h3 class="tabtwo">Data Published By UNESCO in 2018</h3>
+    <div id="map"></div>
+    <div id="tooltip">
+    <div id="tip-header"></div>
+    <div id="tip-body"></div>
+    </div>
+      <script>
+     var height = 600;
+     var width = 800;
+     var tipWidth=200;
+     var tipHeight=200;
+
+      projection = d3.geoOrthographic()
+                    .scale(200)
+                    .translate([width/2, height/2])
+
+      var path = d3.geoPath().projection(projection);
+      var svg = d3.select("#map")
+          .append("svg")
+          .attr("width", width)
+          .attr("height", height);
+     var chart = d3.select("#tip-body").append("svg")
+                        // .attr('width', tipWidth).attr('height', tipHeight);
+
+          d3.json('data/world-110.json').then(function(data){
+                         console.log('world',data);
+            });
+      Promise.all([d3.json('data/world-110.json'), d3.csv('data/literacyRate.csv' )])
+
+            .then(function ready(loadData) {
+
+                                          //loading data
+            var world = loadData[0]
+            var data = loadData[1]
+            //organizing Data
+            var countries = topojson.feature(world, world.objects.ne_110m_admin_0_countries);  //3
+            var literacy = d3.nest().key(function(d){return d.country}).map(data);                                  //4
+            var literacySorted = data.slice().sort(function(a,b){return d3.descending(+a.percent, +b.percent);})   //5
+            var countryList = literacySorted.map(d => d.country);                                                         //6
+            var literacybyCountry = new Map(data.map(d => [d.country, +d.percent]));                     //7
+            var literacybyYear = new Map(data.map(d => [d.country, +d.year]));
+
+            console.log(world)
+            console.log(data)
+            console.log(literacy)
+            console.log(data[0].country)
+            console.log(literacySorted)
+            console.log(countryList)
+            console.log(literacybyCountry)
+            console.log(literacybyYear)
+
+      var graticule = d3.geoGraticule();
+              d3.select("svg").insert("path", "path.country")
+                .datum(graticule)
+                .attr("class", "graticule line")
+                .attr("d", path)
+                .attr("fill", "aliceblue")
+
+
+      //code for organizing data goes here
+      function buildBar(d) {
+        //    draw a chart
+           var xScale = d3.scaleLinear().domain([22, 100]).range([0, tipWidth]);
+           yScale = d3.scaleBand().domain(countryList).rangeRound([0, tipHeight]);
+
+             chart.selectAll('.bar')
+                 .data(literacySorted)
+                 .enter().append('rect')
+                 .attr('class', 'bar')
+                 .attr('id', function(d) { return (d.country); })
+                 .attr('x', xScale(0))
+                 .attr('y', function(d) { return yScale(d.country); })
+                 .attr('width', function(d) { return xScale(d.percent); })
+                 .attr('height', yScale.bandwidth())
+                 .attr('fill', function(d){return colorScale(d.percent);});
+                }
+
+
+      //function for mousehover event goes here
+      var hover = function(d) {
+                     var div = document.getElementById('tooltip')
+                     div.style.left = event.pageX +'px';
+                     div.style.top = event.pageY + 'px';
+                     d3.selectAll('path').style('stroke', 'transperent')
+                     d3.select(this).style('stroke', 'grey').style('stroke-dasharray', ('3 3')).call(buildBar)
+                     var divHead = document.getElementById('tip-header')
+                     divHead.innerHTML =  '<h2>  '+d.properties.admin +'</h2>     <strong>Literacy Rate: '
+                     + literacybyCountry.get(d.properties.admin) +'%' +'<br/>Year Collected: '
+                     + literacybyYear.get(d.properties.admin)
+                     var divChart = document.getElementById('chart-body')
+                     d3.select('#'+d.properties.admin).attr('fill','blue')
+                  }
+
+
+                  console.log(world);
+                  console.log(data);
+                  var countries = topojson.feature(world, world.objects.ne_110m_admin_0_countries);
+                  var colorScale = d3.scaleSequential(d3.interpolatePuRd).domain([22.3, 100]);
+                  svg.selectAll("path")
+                  .data(countries.features)
+                  .enter()
+                  .append("path")
+                  .attr("d", path)
+                  .attr("class", "country")
+                  .style("fill", function (d) {return colorScale(literacybyCountry.get(d.properties.admin));})
+                  .style("stroke", '#fff')
+                  .on("mouseover", hover)
+                  .on("mouseout", out);
+
+         var out = function(d){
+                     var div = document.getElementById('tooltip')
+                     d3.select(this).transition().duration(500)
+                         .style('stroke', function(d){return 'transparent'});
+                     d3.select('#'+d.properties.admin).attr('fill', function(d){return 'transparent'})
+                             }
+
+                                       // function for making a map goes here
+
+                                       //function for zoom goes here
+
+      var mapZoom = d3.zoom().on("zoom", zoomed);
+
+                                                 //Orthographic should start out untranslated
+      var zoomSettings = d3.zoomIdentity
+      .translate(0, 0)
+      .scale(200);
+
+  //This scale will be used to transform for x-zoom to degrees
+      var rotateScale = d3.scaleLinear()
+      .domain([-500, 0, 500])
+      .range([-180, 0, 180]);
+
+    d3.select("svg").call(mapZoom).call(mapZoom.transform, zoomSettings);
+    function zoomed() {
+                      var e = d3.event;
+                      var currentRotateX = rotateScale(e.transform.x) % 360;
+                      //make the globe roll around up and down
+                      var currentRotateY = rotateScale(e.transform.y) % 360;
+
+                      projection.rotate([currentRotateX, currentRotateY])
+                                .scale(e.transform.k)
+                      d3.selectAll("path.graticule").attr("d", path);
+                      d3.selectAll("path.country").attr("d", path)
+                      .style("fill", function (d) {return colorScale(literacybyCountry.get(d.properties.admin));})
+                      .style("stroke", '#fff')
+                      .on("mouseover", hover)
+                      .on("mouseout", out);
+                }
+
+   });
+      </script>
+      <p>Visualization Created By: Laura Kirk (UW GeoData Senior)</p>
+  </body>
+</html>
